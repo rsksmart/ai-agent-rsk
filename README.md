@@ -1,51 +1,81 @@
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rsksmart/reown-next-starter-kit/badge)](https://scorecard.dev/viewer/?uri=github.com/rsksmart/reown-next-starter-kit)
-[![CodeQL](https://github.com/rsksmart/rskj/workflows/CodeQL/badge.svg)](https://github.com/rsksmart/reown-next-starter-kit/actions?query=workflow%3ACodeQL)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rsksmart/ai-agent-rsk/badge)](https://scorecard.dev/viewer/?uri=github.com/rsksmart/ai-agent-rsk)
+[![CodeQL](https://github.com/rsksmart/rskj/workflows/CodeQL/badge.svg)](https://github.com/rsksmart/ai-agent-rsk/actions?query=workflow%3ACodeQL)
 
 <img src="rootstock-logo.png" alt="RSK Logo" style="width:100%; height: auto;" />
 
-# Rootstock Reown AppKit Example using wagmi (Next.js with App Router)
+# Conversational AI Agent on Rootstock Testnet
 
-**⚠️ Warning: This is a starter kit designed for hackathons and rapid prototyping. It is intended for educational and experimental purposes only. Use it at your own risk, and ensure thorough testing before deploying in production environments.**
+**⚠️ Warning: This is a prototype intended for hackathons, learning, and rapid prototyping. Use it at your own risk. It is not ready for production without further testing.**
 
-This project demonstrates the integration of [Reown's AppKit](https://docs.reown.com/appkit/next/core/installation) with a Next.js application utilizing the App Router. The wagmi library provides essential hooks for interacting with wallets like MetaMask and WalletConnect, allowing developers to focus on building their decentralized applications (dApps) rather than managing low-level blockchain interactions.
+This project demonstrates how to build a lightweight conversational AI agent that can interpret natural language and perform blockchain actions like checking token balances and sending tRBTC—all through a chat interface. It runs on the **Rootstock testnet** using [**Groq’s LLM API**](https://groq.com/), [**Reown AppKit**](https://reown.com/), and [**Wagmi**](https://wagmi.sh/), all wrapped in a [**Next.js app**](https://nextjs.org/) styled with [**Shadcn UI**](https://ui.shadcn.com/).
 
-For more details on Embedded Wallets, explore the official [Reown Documentation](https://docs.reown.com/), which offers further insights into wallet management and features.
+> 🔗 Inspired by [BitMate](https://github.com/Zero-Labs-Workspace/BitMate) – a hackathon project exploring the fusion of AI and DeFi on Rootstock.
+
+## Features
+
+- 🔐 Wallet connection via Reown AppKit (MetaMask, WalletConnect, embedded)
+- 🧠 Natural language interface via Groq LLM API
+- 💬 Conversational agent with memory and action routing
+- ⚡ Send tRBTC and check token balances using plain English
+- 🖼️ UI powered by Next.js App Router and Shadcn components
 
 ## Prerequisites
 
-Ensure that you have the following tools installed:
+Make sure you have the following installed:
 
-- [Node.js](https://nodejs.org/) (v19.x or later)
-- [Bun](https://bun.sh/) (v1.1.x or later) or [Yarn](https://yarnpkg.com/) (recommended for Next.js projects)
+- [Node.js](https://nodejs.org/) (v18+)
+- [Git](https://git-scm.com/)
+- A browser wallet like MetaMask connected to the [Rootstock Testnet](https://explorer.testnet.rootstock.io/)
 
-## How to Use
+Optional but recommended:
+
+- [Bun](https://bun.sh/) (v1.1+) or [Yarn](https://yarnpkg.com/)
+
+## Getting Started
 
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/rsksmart/reown-next-starter-kit.git
-   cd reown-next-starter-kit
+   git clone https://github.com/rsksmart/ai-agent-rsk.git
+   cd ai-agent-rsk
    ```
 
 2. **Install Dependencies**
 
    ```bash
-   yarn install # or bun install
+   npm install # or bun install or yarn install
    ```
 
 3. **Configure Environment Variables**
 
-   - Rename `.env.example` to `.env.local`.
+   - Copy `.env.example` to `.env.local`
+   - Fill in the following values:
 
-   - Obtain your `Project ID` from [Reown Cloud](https://cloud.reown.com) and add it to the `.env.local` file.
+     ```
+     NEXT_PUBLIC_PROJECT_ID=
+     NEXT_PUBLIC_RPC_MAINNET=
+     NEXT_PUBLIC_RPC_TESTNET=
+     NEXT_PUBLIC_GROQ_API_KEY=
+     ```
+   You can get the api keys this way:
 
-   - Add your `Rootstock Mainnet RPC URL` and `Rootstock Testnet RPC URL` to the `.env.local` file. Get your RPC from [RPC API](https://dashboard.rpc.rootstock.io/dashboard)
+   - ProjectId at [Reown Cloud](https://cloud.reown.com/)
+   - RPCs at [Rootstock RPC API](https://dashboard.rpc.rootstock.io/dashboard)
+   - Groq API Key at [Groq Console](https://console.groq.com/keys)
 
-4. **Run the Application**
+4. **Run the Dev Server**
 
    ```bash
-   yarn dev # or bun run dev
+   npm run dev # or bun dev or yarn dev
    ```
+
+## Project Structure
+
+- `app/page.tsx` — Main chat UI and wallet interface
+- `src/lib/utils.ts` — Wallet address validation and token lookup
+- `src/lib/constants.ts` — Block explorer URLs and other constants
+- `components/` — Reusable UI components and chat layout
+- `app/api/ai` — Endpoint to call Groq LLM API
 
 ## Contributors
 
@@ -53,16 +83,17 @@ Ensure that you have the following tools installed:
 
 ## Troubleshooting
 
-- **RPC Connection Issues**: Verify that the RPC URLs are reachable and correct.
-- **Wallet Connection Issues**: Check if MetaMask is installed and the wallet is connected to the Rootstock Testnet.
+- **Groq API Key Not Working**: Make sure it’s correctly set in `.env.local` and not rate-limited.
+- **Wallet Connection Fails**: Check MetaMask is on the Rootstock Testnet.
+- **Token Not Found**: Make sure the token is an ERC-20 on Rootstock Testnet.
 
 ## Contributing
 
-We welcome contributions from the community. Please fork the repository and submit pull requests with your changes. Ensure your code adheres to the project's main objectives.
+We welcome community contributions! Feel free to fork the project and submit a pull request. Just make sure your changes are well-documented and scoped to the project's purpose.
 
 ## Support
 
-For any questions or support, please open an issue on the repository or reach out to the maintainers.
+If you run into any issues or have questions, please [open an issue](https://github.com/rsksmart/ai-agent-rsk/issues) on GitHub.
 
 ## Disclaimer
 
