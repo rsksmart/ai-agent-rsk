@@ -6,8 +6,8 @@ import './globals.css';
 import ContextProvider from '@/context'
 
 export const metadata: Metadata = {
-  title: "AppKit in Next.js + wagmi",
-  description: "AppKit example dApp",
+  title: "AI Agent on Rootstock Testnet",
+  description: "Conversational AI Agent on Rootstock Testnet",
 };
 
 export default async function RootLayout({
