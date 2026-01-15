@@ -1,0 +1,5 @@
+{
+  "LendingPoolModule#MockUSDT0": "0x73FA80d19edFDb4E28c870940dca83d990808391",
+  "LendingPoolModule#UmbrellaOracleAdapter": "0x5844e8fbcF680f047bA11A54f088419D79e14d35",
+  "LendingPoolModule#LendingPool": "0x70cF2C2703D2Dc02f5c0A1C3b9B430F1A1E9D359"
+}
