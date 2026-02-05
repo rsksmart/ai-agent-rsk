@@ -19,8 +19,15 @@ RootstockLabs will make a best effort to meet the following response times for r
 - Time to first response (from report submit) - 5 business days
 - Time to triage (from report submit) - 7 business days
 
-We’ll try to keep you informed about our progress throughout the process.
+We'll try to keep you informed about our progress throughout the process.
 
 ### Disclose Policy
 
 Follow our [disclosure guidelines](https://www.rootstocklabs.com/bounty-program/).
+
+
+
+
+
+
+
