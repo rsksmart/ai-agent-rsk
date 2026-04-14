@@ -17,22 +17,29 @@ import {
   sendTransaction,
   writeContract,
 } from "@wagmi/core";
-import { checksumAddress, erc20Abi, isAddress, parseEther } from "viem";
+import { checksumAddress, erc20Abi, formatEther, isAddress, parseEther } from "viem";
 import { findToken, isValidWalletAddress } from "@/lib/utils";
 import { BLOCK_EXPLORER_URL } from "@/lib/contants";
 
 export default function Home() {
+  type ChatRole = "user" | "bot" | "agent";
   const [messages, setMessages] = useState<
-    { role: string; content: React.ReactNode }[]
+    { role: ChatRole; content: React.ReactNode; text?: string }[]
   >([
     {
       role: "agent",
       content:
         "Hello! I can help you interact with the Rootstock testnet. What would you like to do?",
+      text: "Hello! I can help you interact with the Rootstock testnet. What would you like to do?",
     },
   ]);
 
   const { address, isConnected } = useAppKitAccount();
+  
+  useEffect(() => {
+    console.log("Wallet Status:", { address, isConnected });
+  }, [address, isConnected]);
+
   const config = useConfig();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -41,7 +48,7 @@ export default function Home() {
   const handleTransfer = async (data: {
     token1: string;
     address: string;
-    amount: number;
+    amount: string | number;
   }) => {
     console.log("Data:", data);
     try {
@@ -51,19 +58,27 @@ export default function Home() {
           : await findToken(data.token1);
 
       if (!tokenAddress) throw new Error("Token not found");
+      const normalizedAmount = data.amount.toString().trim();
+      if (!normalizedAmount) {
+        throw new Error("Amount is required");
+      }
+      const parsedAmount = parseEther(normalizedAmount);
+      if (parsedAmount <= BigInt(0)) {
+        throw new Error("Amount must be greater than zero");
+      }
 
       let transactionHash: string;
       if (tokenAddress === "trbtc") {
         transactionHash = await sendTransaction(config, {
           to: data.address as `0x${string}`,
-          value: parseEther(data.amount.toString()),
+          value: parsedAmount,
         });
       } else {
         transactionHash = await writeContract(config, {
           abi: erc20Abi,
           address: tokenAddress as `0x${string}`,
           functionName: "transfer",
-          args: [data.address as `0x${string}`, BigInt(data.amount)],
+          args: [data.address as `0x${string}`, parsedAmount],
         });
       }
 
@@ -74,7 +89,7 @@ export default function Home() {
     }
   };
 
-  const handleBalance = async (data: any) => {
+  const handleBalance = async (data: { token1: string; address?: string }) => {
     try {
       const tokenAdd =
         data.token1.toLowerCase() === "trbtc"
@@ -85,17 +100,21 @@ export default function Home() {
         throw new Error("Token not found");
       }
 
-      const acc = isAddress(data.address) ? data.address : address;
+      const acc = data.address && isAddress(data.address) ? data.address : address;
+
+      if (!acc) {
+        throw new Error("No wallet address provided or connected");
+      }
 
       let balance;
 
       if (tokenAdd === "trbtc") {
         const queryBalance = await getBalance(config, {
-          address: acc,
+          address: acc as `0x${string}`,
         });
 
         balance = {
-          displayValue: Number(queryBalance.value) / 10e18,
+          displayValue: Number(formatEther(queryBalance.value)),
           symbol: "tRBTC",
         };
       } else {
@@ -103,10 +122,10 @@ export default function Home() {
           abi: erc20Abi,
           address: checksumAddress(tokenAdd as `0x${string}`) as `0x${string}`,
           functionName: "balanceOf",
-          args: [acc],
+          args: [acc as `0x${string}`],
         });
         balance = {
-          displayValue: Number(queryBalance) / 10e18,
+          displayValue: Number(formatEther(queryBalance)),
 
           symbol: data.token1,
         };
@@ -122,13 +141,18 @@ export default function Home() {
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: "user", content: input };
+    const userMessage: { role: ChatRole; content: React.ReactNode; text?: string } = {
+      role: "user",
+      content: input,
+      text: input,
+    };
     setInput("");
     setIsLoading(true);
 
     const processingMessage = {
       role: "bot" as const,
       content: "Processing your request...",
+      text: "Processing your request...",
     };
 
     const newMessages = [...messages, userMessage, processingMessage];
@@ -139,6 +163,7 @@ export default function Home() {
         {
           role: "bot",
           content: "Please connect your wallet to perform this action.",
+          text: "Please connect your wallet to perform this action.",
         },
       ]);
       setIsLoading(false);
@@ -150,11 +175,8 @@ export default function Home() {
     try {
       // Extract text-only message history for API
       const messageHistory = messages.map((msg) => ({
-        role: msg.role,
-        content:
-          typeof msg.content === "string"
-            ? msg.content
-            : "Content not available as string",
+        role: msg.role === "agent" ? "assistant" : msg.role,
+        content: msg.text || (typeof msg.content === "string" ? msg.content : "Content not available"),
       }));
 
       // Process all requests through the AI endpoint
@@ -170,6 +192,10 @@ export default function Home() {
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to fetch AI response");
+      }
 
       console.log("AI response:", data);
 
@@ -188,6 +214,7 @@ export default function Home() {
               ...newMessages.slice(0, -1),
               {
                 role: "bot",
+                text: `Transaction initiated: ${transactionHash}`,
                 content: (
                   <a
                     href={`${BLOCK_EXPLORER_URL}${transactionHash}`}
@@ -212,6 +239,7 @@ export default function Home() {
               ...newMessages.slice(0, -1),
               {
                 role: "bot",
+                text: `Balance: ${balance.displayValue} ${balance.symbol}`,
                 content: (
                   <div className="w-full">
                     <div className="mt-2">
@@ -228,6 +256,7 @@ export default function Home() {
               ...newMessages.slice(0, -1),
               {
                 role: "bot",
+                text: data.analysis || "No information available.",
                 content: (
                   <div className="markdown-content space-y-4">
                     <ReactMarkdown>
@@ -245,6 +274,7 @@ export default function Home() {
           ...newMessages.slice(0, -1),
           {
             role: "bot",
+            text: data.analysis || "No information available.",
             content: (
               <div className="markdown-content space-y-4">
                 <ReactMarkdown>
@@ -260,6 +290,7 @@ export default function Home() {
         ...newMessages.slice(0, -1),
         {
           role: "bot",
+          text: `Error: ${error instanceof Error ? error.message : "Operation failed"}`,
           content: `Error: ${
             error instanceof Error ? error.message : "Operation failed"
           }`,

@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator";
 export const InfoList = () => {
   const kitTheme = useAppKitTheme();
   const state = useAppKitState();
-  const { address, caipAddress, isConnected, embeddedWalletInfo } =
+  const { address, isConnected, embeddedWalletInfo } =
     useAppKitAccount();
   const events = useAppKitEvents();
   const walletInfo = useWalletInfo();

@@ -17,7 +17,65 @@ This project demonstrates how to build a lightweight conversational AI agent tha
 - 🧠 Natural language interface via Groq LLM API
 - 💬 Conversational agent with memory and action routing
 - ⚡ Send tRBTC and check token balances using plain English
-- 🖼️ UI powered by Next.js App Router and Shadcn components
+- �️ **Modular Tool System** — Extensible architecture for adding new AI skills.
+- 📊 **Transaction Summarization** — Automatically fetch and summarize wallet activity.
+- 🔬 **Smart Contract Interpretation** — Interpret and interact with Rootstock contracts.
+- �️ UI powered by Next.js App Router and Shadcn components
+
+## Community-Driven Extensions
+
+The Rootstock AI Agent is built on a collaborative, modular ecosystem. We foster innovation by allowing the community to contribute new "AI skills" or modules. Developers can easily extend the agent's capabilities to:
+- Summarize complex transactions.
+- Interpret and interact with smart contract data.
+- Integrate with additional Rootstock DeFi protocols.
+
+**Goal:** Foster innovation and expand the AI Agent into a collaborative, modular ecosystem that grows through community input.
+
+### Add a new plugin tool
+
+Server-side tool registration is manifest-driven. To add a community tool:
+
+1. Create your tool module in `src/lib/ai/tools/` and export a `Tool`.
+2. Define:
+   - `type: "server"` (or `"client"` for frontend-executed actions)
+   - `definition` (Groq function metadata)
+   - `argsSchema` (zod validation for all tool arguments)
+   - `handler` (required for server tools)
+3. Register it through a manifest in `src/lib/ai/tools/plugins/`.
+   - Add or update a `*.manifest.ts` file.
+   - Include the manifest in `src/lib/ai/tools/plugins/index.ts`.
+4. Run lint/type checks to ensure schema and type safety pass.
+
+Validation and safety rules:
+- Tool names must be unique across all manifests.
+- Server tools must provide a handler (compile-time and runtime validated).
+- Tool arguments are validated before execution.
+- Only enabled and allowlisted manifests are loaded.
+
+Minimal server tool example:
+
+```ts
+import { z } from "zod";
+import { Tool } from "../types";
+
+export const myTool: Tool = {
+  type: "server",
+  argsSchema: z.object({ address: z.string() }),
+  definition: {
+    type: "function",
+    function: {
+      name: "my_tool",
+      description: "Example tool",
+      parameters: {
+        type: "object",
+        properties: { address: { type: "string" } },
+        required: ["address"],
+      },
+    },
+  },
+  handler: async ({ address }) => ({ ok: true, address }),
+};
+```
 
 ## Prerequisites
 
@@ -74,8 +132,9 @@ Optional but recommended:
 - `app/page.tsx` — Main chat UI and wallet interface
 - `src/lib/utils.ts` — Wallet address validation and token lookup
 - `src/lib/constants.ts` — Block explorer URLs and other constants
+- `src/lib/ai/tools/` — Modular AI skill definitions (client and server-side)
 - `components/` — Reusable UI components and chat layout
-- `app/api/ai` — Endpoint to call Groq LLM API
+- `app/api/ai` — Endpoint to call Groq LLM API and handle modular tools
 
 ## Contributors
 
