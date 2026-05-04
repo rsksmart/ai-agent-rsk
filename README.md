@@ -18,6 +18,7 @@ This project demonstrates how to build a lightweight conversational AI agent tha
 - 💬 Conversational agent with memory and action routing
 - ⚡ Send tRBTC and check token balances using plain English
 - 🖼️ UI powered by Next.js App Router and Shadcn components
+- 🔌 **Plugin System**: Extensible architecture for community-contributed AI skills
 
 ## Prerequisites
 
@@ -55,7 +56,9 @@ Optional but recommended:
      NEXT_PUBLIC_PROJECT_ID=
      NEXT_PUBLIC_RPC_MAINNET=
      NEXT_PUBLIC_RPC_TESTNET=
-     NEXT_PUBLIC_GROQ_API_KEY=
+     GROQ_API_KEY=
+     # Optional: protect /api/ai in production deployments
+     AI_AGENT_API_KEY=
      ```
    You can get the api keys this way:
 
@@ -76,6 +79,10 @@ Optional but recommended:
 - `src/lib/constants.ts` — Block explorer URLs and other constants
 - `components/` — Reusable UI components and chat layout
 - `app/api/ai` — Endpoint to call Groq LLM API
+- `src/plugins/` — Plugin system core (registry, loader, types)
+- `src/plugins/builtin/` — Built-in plugins (transfer, balance)
+- `plugins/examples/` — Example plugins for developers
+- `docs/plugins/` — Plugin development documentation
 
 ## Contributors
 
@@ -87,9 +94,72 @@ Optional but recommended:
 - **Wallet Connection Fails**: Check MetaMask is on the Rootstock Testnet.
 - **Token Not Found**: Make sure the token is an ERC-20 on Rootstock Testnet.
 
+## Plugin System
+
+The Rootstock AI Agent features an extensible plugin system that allows developers to create and publish custom "AI skills" or modules, expanding the agent's functionality through community-driven innovation.
+
+### Creating Plugins
+
+Want to add new capabilities to the AI agent? Create a plugin!
+
+1. **Read the Guide**: Check out the [Plugin Development Guide](./docs/plugins/DEVELOPMENT.md)
+2. **See Examples**: Review example plugins in [`plugins/examples/`](./plugins/examples/)
+3. **Build Your Plugin**: Follow the plugin interface and create your custom functionality
+4. **Share It**: Submit a pull request to add your plugin to the community
+
+### Quick Plugin Example
+
+```typescript
+import { IPlugin, PluginMetadata, PluginFunction, PluginContext, PluginResult } from "@/plugins/types";
+
+const myPlugin: IPlugin = {
+  metadata: {
+    name: "my-plugin",
+    version: "1.0.0",
+    description: "What your plugin does",
+  },
+  functions: [
+    {
+      name: "myFunction",
+      description: "What this function does",
+      parameters: {
+        type: "object",
+        properties: {
+          param: { type: "string", description: "Parameter description" },
+        },
+        required: ["param"],
+      },
+    },
+  ],
+  async execute(functionName, args, context) {
+    // Your implementation
+    return { success: true, data: { result: "..." } };
+  },
+};
+```
+
+### Loading Plugins
+
+```typescript
+import { loadPlugin } from "@/plugins";
+import { myPlugin } from "./my-plugin";
+
+await loadPlugin(myPlugin);
+```
+
+The AI will automatically be able to use your plugin's functions!
+
+For more details, see the [Plugin Development Guide](./docs/plugins/DEVELOPMENT.md).
+
 ## Contributing
 
-We welcome community contributions! Feel free to fork the project and submit a pull request. Just make sure your changes are well-documented and scoped to the project's purpose.
+We welcome community contributions! This includes:
+
+- **Creating Plugins**: Add new AI skills through the plugin system
+- **Improving Core**: Enhance the agent's core functionality
+- **Documentation**: Help improve guides and documentation
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
 
 ## Support
 

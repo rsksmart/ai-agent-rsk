@@ -87,4 +87,11 @@
     background-position: center;
     background-repeat: no-repeat;
   }
+} 
+
+.app-background {
+  background-image: url("/img/background.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }

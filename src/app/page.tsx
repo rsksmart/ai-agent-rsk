@@ -8,24 +8,19 @@ import { Input } from "@/components/ui/input";
 import ReactMarkdown from "react-markdown";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppKitAccount } from "@reown/appkit/react";
 import { useConfig } from "wagmi";
-import {
-  getBalance,
-  readContract,
-  sendTransaction,
-  writeContract,
-} from "@wagmi/core";
-import { checksumAddress, erc20Abi, isAddress, parseEther } from "viem";
-import { findToken, isValidWalletAddress } from "@/lib/utils";
-import { BLOCK_EXPLORER_URL } from "@/lib/contants";
+import { isValidWalletAddress } from "@/lib/utils";
+import { BLOCK_EXPLORER_URL } from "@/lib/constants";
+import { executePluginFunction } from "@/plugins/client-executor";
 
 export default function Home() {
   const [messages, setMessages] = useState<
-    { role: string; content: React.ReactNode }[]
+    { id: string; role: string; content: React.ReactNode }[]
   >([
     {
+      id: crypto.randomUUID(),
       role: "agent",
       content:
         "Hello! I can help you interact with the Rootstock testnet. What would you like to do?",
@@ -37,96 +32,61 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [pendingTransfer, setPendingTransfer] = useState<{
+    functionName: string;
+    args: Record<string, unknown>;
+  } | null>(null);
 
-  const handleTransfer = async (data: {
-    token1: string;
-    address: string;
-    amount: number;
-  }) => {
-    console.log("Data:", data);
+  const isSendDisabled = useMemo(
+    () => isLoading || !!pendingTransfer || !input.trim(),
+    [isLoading, pendingTransfer, input]
+  );
+
+  function safeJsonString(value: unknown, maxLen: number): string {
     try {
-      const tokenAddress =
-        data.token1.toLowerCase() === "trbtc"
-          ? "trbtc"
-          : await findToken(data.token1);
-
-      if (!tokenAddress) throw new Error("Token not found");
-
-      let transactionHash: string;
-      if (tokenAddress === "trbtc") {
-        transactionHash = await sendTransaction(config, {
-          to: data.address as `0x${string}`,
-          value: parseEther(data.amount.toString()),
-        });
-      } else {
-        transactionHash = await writeContract(config, {
-          abi: erc20Abi,
-          address: tokenAddress as `0x${string}`,
-          functionName: "transfer",
-          args: [data.address as `0x${string}`, BigInt(data.amount)],
-        });
-      }
-
-      return transactionHash;
-    } catch (error) {
-      console.error("Transfer failed:", error);
-      throw error;
+      const s = JSON.stringify(value, null, 2) ?? "";
+      return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+    } catch {
+      return "";
     }
-  };
+  }
 
-  const handleBalance = async (data: any) => {
-    try {
-      const tokenAdd =
-        data.token1.toLowerCase() === "trbtc"
-          ? "trbtc"
-          : await findToken(data.token1);
+  function validateAddressArgsOrThrow(
+    functionName: string,
+    args: Record<string, unknown> | undefined
+  ): void {
+    if (!args) return;
 
-      if (!tokenAdd && data.token1.toLowerCase() !== "trbtc") {
-        throw new Error("Token not found");
+    const addressKeys = new Set([
+      "address",
+      "to",
+      "from",
+      "recipient",
+      "receiver",
+      "spender",
+      "owner",
+      "wallet",
+      "walletAddress",
+    ]);
+
+    for (const [key, value] of Object.entries(args)) {
+      const looksLikeAddressKey = addressKeys.has(key) || key.toLowerCase().endsWith("address");
+      if (!looksLikeAddressKey) continue;
+      if (typeof value !== "string" || !isValidWalletAddress(value)) {
+        throw new Error(`Invalid wallet address for ${functionName}`);
       }
-
-      const acc = isAddress(data.address) ? data.address : address;
-
-      let balance;
-
-      if (tokenAdd === "trbtc") {
-        const queryBalance = await getBalance(config, {
-          address: acc,
-        });
-
-        balance = {
-          displayValue: Number(queryBalance.value) / 10e18,
-          symbol: "tRBTC",
-        };
-      } else {
-        const queryBalance = await readContract(config, {
-          abi: erc20Abi,
-          address: checksumAddress(tokenAdd as `0x${string}`) as `0x${string}`,
-          functionName: "balanceOf",
-          args: [acc],
-        });
-        balance = {
-          displayValue: Number(queryBalance) / 10e18,
-
-          symbol: data.token1,
-        };
-      }
-
-      return balance;
-    } catch (error) {
-      console.error("Failed to fetch balance:", error);
-      throw error;
     }
-  };
+  }
 
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: "user", content: input };
+    const userMessage = { id: crypto.randomUUID(), role: "user", content: input };
     setInput("");
     setIsLoading(true);
 
     const processingMessage = {
+      id: crypto.randomUUID(),
       role: "bot" as const,
       content: "Processing your request...",
     };
@@ -137,6 +97,7 @@ export default function Home() {
       setMessages([
         ...newMessages.slice(0, -1),
         {
+          id: crypto.randomUUID(),
           role: "bot",
           content: "Please connect your wallet to perform this action.",
         },
@@ -148,102 +109,155 @@ export default function Home() {
     setMessages(newMessages);
 
     try {
-      // Extract text-only message history for API
-      const messageHistory = messages.map((msg) => ({
-        role: msg.role,
-        content:
-          typeof msg.content === "string"
-            ? msg.content
-            : "Content not available as string",
+      // Build history from the messages we are actually showing (minus the temporary processing bubble).
+      const historySource = [...messages, userMessage];
+      const messageHistory = historySource.map((msg) => ({
+        role: msg.role === "bot" || msg.role === "agent" ? "assistant" : "user",
+        content: typeof msg.content === "string" ? msg.content : "",
       }));
 
-      // Process all requests through the AI endpoint
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "chat",
-          question: input,
+          question: userMessage.content,
           address,
           messageHistory: messageHistory,
         }),
       });
 
-      const data = await response.json();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `Request failed (${response.status})`);
+      }
 
-      console.log("AI response:", data);
+      const data = await response.json();
 
       if (data?.functionCall) {
         const functionData = data.functionCall;
 
-        switch (functionData.name) {
-          case "transfer":
-            if (!isValidWalletAddress(functionData?.arguments?.address)) {
-              throw new Error("Invalid wallet address");
-            }
-            const transactionHash = await handleTransfer(
-              functionData.arguments
-            );
-            setMessages([
-              ...newMessages.slice(0, -1),
+        try {
+          const pluginContext = {
+            address,
+            isConnected,
+            config,
+          };
+
+          const args = functionData.arguments as Record<string, unknown> | undefined;
+          validateAddressArgsOrThrow(functionData.name, args);
+
+          if (functionData.name === "transfer") {
+            // Require explicit user confirmation before executing transfers.
+            setPendingTransfer({
+              functionName: functionData.name,
+              args: (functionData.arguments || {}) as Record<string, unknown>,
+            });
+            // Avoid overwriting chat state if anything changes while confirmation is pending.
+            setMessages((prev) => [
+              ...prev.filter((m) => m.id !== processingMessage.id),
               {
+                id: crypto.randomUUID(),
                 role: "bot",
-                content: (
+                content: "Transfer requested. Please confirm to proceed.",
+              },
+            ]);
+            setIsLoading(false);
+            return;
+          }
+
+          const result = await executePluginFunction(
+            functionData.name,
+            functionData.arguments,
+            pluginContext
+          );
+
+          if (result.success) {
+            let displayContent: React.ReactNode;
+
+            if (result.display && result.display.kind !== "none") {
+              if (result.display.kind === "tx") {
+                const txHash = result.display.transactionHash;
+                const explorerUrl =
+                  result.display.explorerUrl || `${BLOCK_EXPLORER_URL}${txHash}`;
+                displayContent = (
                   <a
-                    href={`${BLOCK_EXPLORER_URL}${transactionHash}`}
+                    href={explorerUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-500 hover:text-blue-600 flex items-center gap-1"
                   >
-                    Transaction:{" "}
-                    {`${transactionHash.slice(0, 6)}...${transactionHash.slice(
-                      -4
-                    )}`}
+                    Transaction: {`${txHash.slice(0, 6)}...${txHash.slice(-4)}`}
                     <ExternalLink size={16} />
                   </a>
-                ),
-              },
-            ]);
-            break;
-
-          case "balance":
-            const balance = await handleBalance(functionData.arguments);
-            setMessages([
-              ...newMessages.slice(0, -1),
-              {
-                role: "bot",
-                content: (
+                );
+              } else if (result.display.kind === "balance") {
+                displayContent = (
                   <div className="w-full">
                     <div className="mt-2">
-                      Balance: {balance.displayValue} {balance.symbol}
+                      Balance: {String(result.display.displayValue)} {result.display.symbol}
                     </div>
                   </div>
-                ),
-              },
-            ]);
-            break;
+                );
+              } else if (result.display.kind === "markdown") {
+                displayContent = (
+                  <div className="markdown-content space-y-4">
+                    <ReactMarkdown>{result.display.markdown}</ReactMarkdown>
+                  </div>
+                );
+              } else {
+                displayContent = (
+                  <div className="markdown-content space-y-4">
+                    <ReactMarkdown>Operation completed successfully.</ReactMarkdown>
+                  </div>
+                );
+              }
+            } else if (result.data !== undefined) {
+              // Treat plugin-provided data as untrusted: render only as a capped JSON blob.
+              displayContent = (
+                <pre className="text-xs overflow-auto rounded-md border p-3 bg-muted">
+                  <code>{safeJsonString(result.data, 20_000)}</code>
+                </pre>
+              );
+            } else {
+              displayContent = (
+                <div className="markdown-content space-y-4">
+                  <ReactMarkdown>Operation completed successfully.</ReactMarkdown>
+                </div>
+              );
+            }
 
-          default:
             setMessages([
               ...newMessages.slice(0, -1),
               {
+                id: crypto.randomUUID(),
                 role: "bot",
-                content: (
-                  <div className="markdown-content space-y-4">
-                    <ReactMarkdown>
-                      {data.analysis ||
-                        "No information available for this query."}
-                    </ReactMarkdown>
-                  </div>
-                ),
+                content: displayContent,
               },
             ]);
+          } else {
+            throw new Error(result.error || "Plugin execution failed");
+          }
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : "Failed to execute function";
+          setMessages([
+            ...newMessages.slice(0, -1),
+            {
+              id: crypto.randomUUID(),
+              role: "bot",
+              content: (
+                <div className="text-red-500">
+                  Error: {errorMessage}
+                </div>
+              ),
+            },
+          ]);
         }
       } else {
-        // Regular AI response (strategy or information)
         setMessages([
           ...newMessages.slice(0, -1),
           {
+            id: crypto.randomUUID(),
             role: "bot",
             content: (
               <div className="markdown-content space-y-4">
@@ -256,13 +270,13 @@ export default function Home() {
         ]);
       }
     } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Operation failed";
       setMessages([
         ...newMessages.slice(0, -1),
         {
+          id: crypto.randomUUID(),
           role: "bot",
-          content: `Error: ${
-            error instanceof Error ? error.message : "Operation failed"
-          }`,
+          content: `Error: ${errMsg}`,
         },
       ]);
     } finally {
@@ -277,15 +291,7 @@ export default function Home() {
   }, [messages]);
 
   return (
-    <main
-      style={{
-        backgroundImage: "url(/img/background.png)",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-      }}
-      className="flex min-h-screen flex-col items-center justify-between"
-    >
+    <main className="flex min-h-screen flex-col items-center justify-between app-background">
       <div className="w-full max-w-4xl grow flex flex-col items-center justify-around gap-6 px-4">
         <Image
           src={"/img/rsk.png"}
@@ -303,20 +309,21 @@ export default function Home() {
             <div
               className="space-y-4 mb-4 h-[400px] overflow-y-auto p-2 border rounded-md"
               ref={containerRef}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions text"
             >
-              {messages.map(({ role, content }, idx) => (
+              {messages.map(({ id, role, content }) => (
                 <div
-                  key={idx}
-                  className={`flex ${
-                    role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  key={id}
+                  className={`flex ${role === "user" ? "justify-end" : "justify-start"
+                    }`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                      role === "user"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
-                    }`}
+                    className={`max-w-[80%] rounded-lg px-4 py-2 ${role === "user"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                      }`}
                   >
                     <div className="whitespace-pre-wrap">{content}</div>
                   </div>
@@ -335,8 +342,9 @@ export default function Home() {
                   }
                 }}
                 disabled={isLoading}
+                aria-label="Message input"
               />
-              <Button onClick={handleSend} disabled={isLoading}>
+              <Button onClick={handleSend} disabled={isSendDisabled} aria-label="Send message" aria-busy={isLoading}>
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
@@ -344,6 +352,76 @@ export default function Home() {
                 )}
               </Button>
             </div>
+
+            {pendingTransfer && (
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingTransfer(null)}
+                  aria-label="Cancel transfer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!pendingTransfer) return;
+                    setIsLoading(true);
+                    try {
+                      const pluginContext = { address, isConnected, config };
+                      const result = await executePluginFunction(
+                        pendingTransfer.functionName,
+                        pendingTransfer.args,
+                        pluginContext
+                      );
+                      if (!result.success) throw new Error(result.error || "Transfer failed");
+
+                      const dataObj = (result.data ?? {}) as Record<string, unknown>;
+                      const txHash =
+                        (typeof dataObj["transactionHash"] === "string" ? (dataObj["transactionHash"] as string) : "") ||
+                        (result.display?.kind === "tx" ? result.display.transactionHash : "");
+                      const explorerUrl =
+                        (typeof dataObj["explorerUrl"] === "string" ? (dataObj["explorerUrl"] as string) : undefined) ||
+                        (result.display?.kind === "tx" ? result.display.explorerUrl : undefined);
+
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          id: crypto.randomUUID(),
+                          role: "bot",
+                          content: (
+                            <a
+                              href={explorerUrl || `${BLOCK_EXPLORER_URL}${txHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                            >
+                              Transaction: {`${String(txHash).slice(0, 6)}...${String(txHash).slice(-4)}`}
+                              <ExternalLink size={16} />
+                            </a>
+                          ),
+                        },
+                      ]);
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : "Transfer failed";
+                      setMessages((prev) => [
+                        ...prev,
+                        {
+                          id: crypto.randomUUID(),
+                          role: "bot",
+                          content: <div className="text-red-500">Error: {msg}</div>,
+                        },
+                      ]);
+                    } finally {
+                      setPendingTransfer(null);
+                      setIsLoading(false);
+                    }
+                  }}
+                  aria-label="Confirm transfer"
+                >
+                  Confirm transfer
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

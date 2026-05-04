@@ -12,6 +12,8 @@ if (!projectId) {
 
 export const networks = [rootstockTestnet, rootstock] as [AppKitNetwork, ...AppKitNetwork[]]
 
+type WagmiAdapterConfig = ConstructorParameters<typeof WagmiAdapter>[0]
+
 //Set up the Wagmi Adapter (Config)
 export const wagmiAdapter = new WagmiAdapter({
   chains: [rootstockTestnet, rootstock],
@@ -21,7 +23,7 @@ export const wagmiAdapter = new WagmiAdapter({
   },
   storage: createStorage({
     storage: cookieStorage
-  }),
+  }) as WagmiAdapterConfig['storage'],
   ssr: true,
   projectId,
   networks
